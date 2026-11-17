@@ -1,0 +1,806 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#f6f2ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16130f" media="(prefers-color-scheme: dark)">
+<title>西语闪卡</title>
+<style>
+@font-face{font-family:"Newsreader";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/newsreader-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Newsreader";font-style:italic;font-weight:400;font-display:swap;src:url(fonts/newsreader-latin-400-italic.woff2) format("woff2")}
+@font-face{font-family:"Newsreader";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/newsreader-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;src:url(fonts/jetbrains-mono-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:600;font-display:swap;src:url(fonts/jetbrains-mono-latin-600-normal.woff2) format("woff2")}
+
+/* 布局：首页（单词本概览 + 单元列表 + 设置）/ 学习页（卡片舞台 + 底部操作）/ 单词本列表。
+   配色：暖纸底 + 赤陶色强调，深色模式跟随系统。 */
+:root{
+  --bg:#f6f2ec; --surface:#fffdf9; --fg:#231c15; --muted:#7a6e62; --line:#e6ddd1;
+  --accent:#c2410c; --accent-soft:#fbe7dc; --ok:#2f7d4f; --ok-soft:#e2f2e7; --warn:#b7791f; --bad:#c2352b; --bad-soft:#fbe6e3;
+  --card-shadow:0 1px 2px rgba(60,40,20,.06),0 8px 24px rgba(60,40,20,.08);
+  --display:"Newsreader",Georgia,"Times New Roman",serif;
+  --body:"Noto Sans SC","Noto Sans CJK SC",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#16130f; --surface:#211c17; --fg:#f1e9df; --muted:#a89a8b; --line:#352d25;
+  --accent:#f08a54; --accent-soft:#3a2418; --ok:#5cc58a; --ok-soft:#173022; --warn:#e0a84a; --bad:#ff7a6e; --bad-soft:#3d1c1c;
+  --card-shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35); color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.55;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit}
+.view{min-height:100%}
+.wrap{max-width:640px;margin:0 auto;padding:calc(20px + env(safe-area-inset-top,0px)) 16px calc(40px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:18px}
+header.top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+h1{font-family:var(--display);font-weight:600;font-size:1.9rem;margin:0;letter-spacing:-.01em}
+h1 em{font-style:italic;color:var(--accent);font-weight:400}
+.sub{color:var(--muted);font-size:.82rem}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+.label{font-size:.75rem;letter-spacing:.08em;color:var(--muted);font-weight:500;margin:0 0 10px}
+.btn{border:none;background:var(--accent);color:#fff;padding:11px 18px;border-radius:12px;cursor:pointer;font-weight:500;font-size:.95rem}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.btn.sm{padding:7px 12px;font-size:.85rem;border-radius:9px}
+.btn:disabled{opacity:.4}
+.linkbtn{background:none;border:none;color:var(--accent);cursor:pointer;padding:0;font-size:.85rem;text-decoration:underline;text-underline-offset:3px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* 单词本概览 */
+.bookpanel{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+.stat{text-align:center;padding:8px 4px;border-radius:12px;background:var(--bg)}
+.stat b{display:block;font-family:var(--mono);font-size:1.45rem;font-weight:600;line-height:1.2}
+.stat span{font-size:.75rem;color:var(--muted)}
+.stat.due b{color:var(--accent)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row .btn{flex:1}
+.resume{display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;text-align:left;width:100%}
+.resume .ic{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.resume small{display:block;color:var(--muted);font-size:.78rem}
+
+/* 单元列表 */
+.units{display:flex;flex-direction:column;gap:8px}
+.unit{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.unit>button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;padding:12px 14px;cursor:pointer}
+.unit .no{font-family:var(--mono);font-weight:600;font-size:.82rem;color:var(--accent);background:var(--accent-soft);border-radius:8px;padding:4px 7px;min-width:52px;text-align:center}
+.unit .meta{min-width:0}
+.unit .meta b{font-weight:500;font-size:.95rem}
+.unit .meta small{display:block;color:var(--muted);font-size:.75rem}
+.pbar{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
+.pbar i{display:block;height:100%;background:var(--ok);width:0}
+.unit .chev{color:var(--muted);transition:transform .2s}
+.unit.open .chev{transform:rotate(90deg)}
+.lessons{border-top:1px solid var(--line);padding:6px 10px 12px}
+.lesson{all:unset;box-sizing:border-box;display:grid;grid-template-columns:42px 1fr auto;gap:8px;align-items:center;width:100%;padding:9px 6px;border-radius:10px;cursor:pointer}
+.lesson:active{background:var(--bg)}
+.lesson .ln{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.lesson .lt{font-family:var(--display);font-size:1.02rem;line-height:1.25;overflow-wrap:anywhere}
+.lesson .lc{font-family:var(--mono);font-size:.72rem;color:var(--muted);white-space:nowrap}
+.lesson .lc.done{color:var(--ok)}
+.lessons .btn{width:100%;margin-top:8px}
+
+/* 设置 */
+details.panel summary{cursor:pointer;font-weight:500;list-style:none;display:flex;justify-content:space-between}
+details.panel summary::after{content:"›";color:var(--muted);transition:transform .2s}
+details.panel[open] summary::after{transform:rotate(90deg)}
+.set{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.set:last-child{border:none}
+.set small{display:block;color:var(--muted);font-size:.75rem}
+.switch{position:relative;width:46px;height:28px;flex:none}
+.switch input{opacity:0;width:0;height:0;position:absolute}
+.switch span{position:absolute;inset:0;background:var(--line);border-radius:28px;transition:.2s;cursor:pointer}
+.switch span::before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.switch input:checked+span{background:var(--accent)}
+.switch input:checked+span::before{transform:translateX(18px)}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;flex:none}
+.seg button{border:none;background:transparent;padding:6px 10px;font-size:.82rem;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+input[type=range]{accent-color:var(--accent);width:130px}
+
+/* ---------- 学习页 ---------- */
+#study{display:flex;flex-direction:column;height:100%;max-width:640px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px))}
+.sbar{display:flex;align-items:center;gap:8px}
+.icon{width:40px;height:40px;border-radius:50%;border:none;background:transparent;display:grid;place-items:center;cursor:pointer;flex:none;color:var(--fg)}
+.icon svg{width:22px;height:22px}
+.icon:active{background:var(--line)}
+.stitle{flex:1;min-width:0;text-align:center}
+.stitle b{display:block;font-size:.95rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stitle small{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.prog{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin:6px 4px 0}
+.prog i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
+
+.stage{flex:1;position:relative;perspective:1600px;margin:14px 0;min-height:0;touch-action:pan-y}
+.card{position:absolute;inset:0;will-change:transform;cursor:pointer;user-select:none;-webkit-user-select:none}
+.inner{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.3,1.25,.5,1)}
+.card.flipped .inner{transform:rotateY(180deg)}
+.inner.instant{transition:none}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--card-shadow);display:flex;flex-direction:column;overflow:hidden}
+.face.b{transform:rotateY(180deg)}
+.ftag{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 0;font-family:var(--mono);font-size:.72rem;color:var(--muted);gap:8px}
+.ftag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fbody{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:12px 22px 22px;gap:16px;min-height:0;overflow-y:auto}
+.term{font-family:var(--display);font-weight:600;font-size:clamp(1.9rem,8.5vw,2.7rem);line-height:1.15;overflow-wrap:anywhere;text-wrap:balance}
+.term.m{font-size:clamp(1.5rem,6.5vw,2.1rem)}
+.term.l{font-size:clamp(1.2rem,5vw,1.6rem)}
+.ex{font-family:var(--display);font-style:italic;font-size:1.08rem;line-height:1.45;color:var(--muted);max-width:30em;display:flex;gap:8px;align-items:flex-start;text-align:left}
+.ex.l{font-size:.95rem}
+.spk{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:transparent;color:var(--accent);display:grid;place-items:center;cursor:pointer;flex:none}
+.spk svg{width:20px;height:20px}
+.spk.sm{width:32px;height:32px}
+.spk.sm svg{width:15px;height:15px}
+.spk.on{background:var(--accent-soft);border-color:var(--accent)}
+.pic{flex:1 1 auto;min-height:0;max-height:46%;width:100%;display:flex;justify-content:center;align-items:center}
+.pic img{max-width:100%;max-height:100%;border-radius:12px;object-fit:contain;display:block}
+.def{font-size:1.25rem;line-height:1.4;font-weight:500;overflow-wrap:anywhere;text-wrap:balance}
+.def.m{font-size:1.08rem}.def.l{font-size:.95rem;font-weight:400}
+.esmini{font-family:var(--display);font-size:1rem;color:var(--muted)}
+.hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:.72rem;color:var(--muted);pointer-events:none;opacity:.8}
+
+.ctrls{display:grid;grid-template-columns:1fr 1fr 1.3fr 1fr 1fr;gap:8px;align-items:center}
+.cbtn{height:52px;border-radius:14px;border:1px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;color:var(--fg)}
+.cbtn svg{width:22px;height:22px}
+.cbtn.main{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.cbtn.star.on{color:#e0a100;border-color:#e0a100;background:color-mix(in srgb,#e0a100 12%,var(--surface))}
+.cbtn:disabled{opacity:.35}
+.cbtn:active{transform:scale(.96)}
+.rates{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.rate{border:none;border-radius:14px;padding:9px 4px;cursor:pointer;color:#fff;font-weight:500;line-height:1.2}
+.rate small{display:block;font-family:var(--mono);font-size:.7rem;opacity:.85;font-weight:400;margin-top:2px}
+.rate.r0{background:var(--bad)}.rate.r1{background:var(--warn)}.rate.r2{background:var(--ok)}.rate.r3{background:#2b6cb0}
+.showans{width:100%;height:52px}
+
+.done{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:20px}
+.done .big{font-family:var(--display);font-size:2rem;font-weight:600}
+.done .btn{min-width:200px}
+
+/* ---------- 单词本列表 ---------- */
+.tabs{display:flex;gap:6px}
+.tabs button{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px;cursor:pointer;font-size:.88rem}
+.tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.search{width:100%;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:10px;padding:10px 12px;font:inherit}
+.blist{display:flex;flex-direction:column;gap:6px}
+.bitem{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.bitem b{font-family:var(--display);font-weight:600;font-size:1.08rem}
+.bitem .en{font-size:.85rem;color:var(--fg);opacity:.85}
+.bitem small{display:block;font-family:var(--mono);font-size:.7rem;color:var(--muted);margin-top:2px}
+.bitem .x{border:1px solid var(--line);background:transparent;border-radius:9px;padding:5px 9px;font-size:.78rem;cursor:pointer;color:var(--muted);white-space:nowrap}
+.empty{text-align:center;color:var(--muted);padding:30px 10px;font-size:.9rem}
+
+.toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:20px;font-size:.85rem;opacity:0;transition:.25s;pointer-events:none;z-index:50;max-width:90vw;text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.loading{display:grid;place-items:center;height:100%;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="loading" class="loading">加载中…</div>
+
+<!-- ============ 首页 ============ -->
+<section id="home" class="view" hidden>
+  <div class="wrap">
+    <header class="top">
+      <h1>西语<em>闪卡</em></h1>
+      <span class="sub mono" id="totals"></span>
+    </header>
+
+    <div class="panel">
+      <p class="label">单词本</p>
+      <div class="bookpanel">
+        <div class="stat due"><b id="nDue">0</b><span>今天待复习</span></div>
+        <div class="stat"><b id="nBook">0</b><span>单词本</span></div>
+        <div class="stat"><b id="nMastered">0</b><span>已掌握</span></div>
+      </div>
+      <div class="row">
+        <button class="btn" id="btnReview">开始复习</button>
+        <button class="btn ghost" id="btnBookList">查看单词本</button>
+      </div>
+      <p class="sub" id="nextDue" style="margin:10px 0 0"></p>
+    </div>
+
+    <button class="resume" id="resume" hidden>
+      <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+      <span><b id="resumeT"></b><small id="resumeS"></small></span>
+    </button>
+
+    <div>
+      <p class="label">单元（每 5 课一个单元）</p>
+      <div class="units" id="units"></div>
+    </div>
+
+    <details class="panel" id="settings">
+      <summary>设置</summary>
+      <div class="set"><span>切换卡片时自动发音<small>显示西语面时朗读单词</small></span><label class="switch"><input type="checkbox" id="sAuto"><span></span></label></div>
+      <div class="set"><span>同时朗读例句<small>自动发音时，读完单词接着读例句</small></span><label class="switch"><input type="checkbox" id="sEx"><span></span></label></div>
+      <div class="set"><span>卡片正面</span><div class="seg" id="sFront"><button data-v="es">西语</button><button data-v="en">英文+图</button></div></div>
+      <div class="set"><span>打乱顺序<small>学习单元/课时随机排列卡片</small></span><label class="switch"><input type="checkbox" id="sShuffle"><span></span></label></div>
+      <div class="set"><span>语速 <b class="mono" id="sRateV"></b></span><input type="range" id="sRate" min="0.5" max="1.3" step="0.05"></div>
+      <div class="set"><span>掌握标准<small>复习间隔达到这个天数且答对，就自动移出单词本</small></span><div class="seg" id="sMaster"><button data-v="30">30天</button><button data-v="60">60天</button><button data-v="120">120天</button></div></div>
+      <div class="set"><span>备份 / 恢复进度<small>换手机或重装前先导出</small></span><span class="row"><button class="btn sm ghost" id="btnExport">导出</button><button class="btn sm ghost" id="btnImport">导入</button></span></div>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <p class="sub" id="ver" style="margin:10px 0 0"></p>
+    </details>
+  </div>
+</section>
+
+<!-- ============ 学习 / 复习 ============ -->
+<section id="study" hidden>
+  <div class="sbar">
+    <button class="icon" id="sBack" aria-label="返回"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <div class="stitle"><b id="stTitle"></b><small id="stCount"></small></div>
+    <button class="icon" id="sAddAll" aria-label="本组全部加入单词本" title="本组全部加入单词本"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 4h10a2 2 0 0 1 2 2v14l-7-4-7 4V6a2 2 0 0 1 2-2z"/><path d="M19 8v6M16 11h6"/></svg></button>
+  </div>
+  <div class="prog"><i id="stProg"></i></div>
+
+  <div class="stage" id="stage">
+    <div class="card" id="card">
+      <div class="inner" id="inner">
+        <div class="face a" id="faceA"></div>
+        <div class="face b" id="faceB"></div>
+      </div>
+    </div>
+    <div class="done" id="done" hidden></div>
+  </div>
+
+  <div class="ctrls" id="ctrlLearn">
+    <button class="cbtn" id="bPrev" aria-label="上一张"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="cbtn" id="bSpeak" aria-label="发音"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+    <button class="cbtn main" id="bFlip">翻转</button>
+    <button class="cbtn star" id="bStar" aria-label="加入单词本"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
+    <button class="cbtn" id="bNext" aria-label="下一张"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  </div>
+  <div id="ctrlReview" hidden>
+    <button class="btn showans" id="bShow">显示答案</button>
+    <div class="rates" id="rates" hidden>
+      <button class="rate r0" data-q="0">忘了<small></small></button>
+      <button class="rate r1" data-q="1">模糊<small></small></button>
+      <button class="rate r2" data-q="2">记得<small></small></button>
+      <button class="rate r3" data-q="3">简单<small></small></button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 单词本列表 ============ -->
+<section id="book" class="view" hidden>
+  <div class="wrap">
+    <header class="top" style="align-items:center">
+      <button class="icon" id="bkBack" aria-label="返回" style="margin-left:-10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1 style="flex:1;font-size:1.5rem">单词本</h1>
+    </header>
+    <div class="tabs" id="bkTabs">
+      <button data-t="due">待复习</button><button data-t="all">全部</button><button data-t="mastered">已掌握</button>
+    </div>
+    <input class="search" id="bkSearch" placeholder="搜索西语或英文…" autocomplete="off">
+    <div class="blist" id="bkList"></div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================
+   数据
+   cards.json: {lessons:[{n,t,c:[[i, es, en, ex, img], ...]}]}
+   卡片 id = "<lesson>_<i>"，单元 u 包含第 (u-1)*5+1 … u*5 课
+   ========================================================= */
+const $ = s => document.querySelector(s);
+const DAY = 86400000;
+let LESSONS = [], BYN = new Map(), CARDS = new Map(), UNITS = [];
+
+/* ---------- 持久化 ---------- */
+const KEY = "fc.v1";
+const DEF = {settings:{auto:true, ex:false, front:"es", shuffle:false, rate:0.9, master:60}, seen:{}, book:{}, mastered:{}, last:null};
+let S;
+function load(){
+  try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){ S = {}; }
+  for (const k in DEF) if (S[k] === undefined) S[k] = JSON.parse(JSON.stringify(DEF[k]));
+  S.settings = Object.assign({}, DEF.settings, S.settings);
+}
+let saveT = 0;
+function save(now){
+  clearTimeout(saveT);
+  const w = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){ toast("保存失败：" + e.message); } };
+  if (now) w(); else saveT = setTimeout(w, 300);
+}
+
+/* ---------- 发音 ---------- */
+const hasNative = !!(window.Android && Android.speak);
+function ttsText(s){
+  return s.replace(/\([^)]*\)/g, " ")
+    .replace(/^(.*?),\s*(el|la|los|las|un|una)\s*$/i, "$2 $1")
+    .replace(/(\p{L}+)\/(as|os|a|o)\b/gu, "$1")
+    .replace(/\s*\/\s*/g, ", ")
+    .replace(/[“”"«»]|''|\.{3}|…/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+let esVoice = null;
+if (!hasNative && window.speechSynthesis){
+  const pick = () => { const v = speechSynthesis.getVoices(); esVoice = v.find(x => /^es[-_]ES/i.test(x.lang)) || v.find(x => /^es/i.test(x.lang)) || null; };
+  pick(); speechSynthesis.onvoiceschanged = pick;
+}
+function speak(text){
+  text = ttsText(text || "");
+  if (!text) return;
+  if (hasNative){ Android.speak(text); return; }
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "es-ES"; if (esVoice) u.voice = esVoice; u.rate = S.settings.rate;
+  speechSynthesis.speak(u);
+}
+function applyRate(){ if (hasNative && Android.setRate) Android.setRate(S.settings.rate); }
+
+/* ---------- 工具 ---------- */
+const pad = (n, w=3) => String(n).padStart(w, "0");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function sizeCls(s, m, l){ return s.length > l ? "l" : s.length > m ? "m" : ""; }
+function startOfDay(t){ const d = new Date(t); d.setHours(0,0,0,0); return d.getTime(); }
+function relDays(t){
+  const d = Math.round((startOfDay(t) - startOfDay(Date.now())) / DAY);
+  if (t <= Date.now()) return "现在";
+  if (d <= 0) { const m = Math.max(1, Math.round((t - Date.now())/60000)); return m < 60 ? m + " 分钟后" : Math.round(m/60) + " 小时后"; }
+  if (d === 1) return "明天";
+  if (d < 30) return d + " 天后";
+  if (d < 365) return Math.round(d/30) + " 个月后";
+  return (d/365).toFixed(1) + " 年后";
+}
+function ivLabel(days){ if (days < 1) return "10分"; if (days < 30) return days + "天"; if (days < 365) return Math.round(days/30) + "月"; return (days/365).toFixed(1) + "年"; }
+let toastT = 0;
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2200); }
+function shuffle(a){ for (let i = a.length - 1; i > 0; i--){ const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+
+/* =========================================================
+   间隔复习（SM-2 改良版）
+   e 难度系数(≥1.3)  iv 间隔天数  r 连续答对次数  l 遗忘次数  due 下次复习时间
+   忘了 → 10 分钟后重来，本轮稍后再出现
+   模糊/记得/简单 → 间隔按系数放大
+   间隔 ≥ 掌握标准天数且答对 → 自动移出单词本，记入"已掌握"
+   ========================================================= */
+function newItem(){ return {e:2.5, iv:0, r:0, l:0, due:Date.now(), a:Date.now()}; }
+function schedule(it, q){
+  const n = Object.assign({}, it);
+  if (q === 0){ n.r = 0; n.l++; n.e = Math.max(1.3, n.e - 0.2); n.iv = 0; n.due = Date.now() + 10*60000; return n; }
+  if (q === 1){ n.iv = n.r === 0 ? 1 : Math.max(n.iv + 1, Math.round(n.iv * 1.2)); n.e = Math.max(1.3, n.e - 0.15); }
+  if (q === 2){ n.iv = n.r === 0 ? 1 : n.r === 1 ? 3 : Math.max(n.iv + 1, Math.round(n.iv * n.e)); }
+  if (q === 3){ n.iv = n.r === 0 ? 3 : n.r === 1 ? 6 : Math.max(n.iv + 2, Math.round(n.iv * n.e * 1.3)); n.e += 0.15; }
+  n.r++;
+  n.due = startOfDay(Date.now()) + n.iv * DAY + 4*3600000;   // 那天凌晨 4 点起到期
+  return n;
+}
+function isMasterStep(n, q){ return q >= 2 && n.iv >= S.settings.master; }
+function dueIds(){ const now = Date.now(); return Object.keys(S.book).filter(id => S.book[id].due <= now && CARDS.has(id)).sort((a,b) => S.book[a].due - S.book[b].due); }
+function inBook(id){ return !!S.book[id]; }
+function addToBook(id){ if (S.book[id]) return false; S.book[id] = newItem(); delete S.mastered[id]; save(); return true; }
+function removeFromBook(id){ delete S.book[id]; save(); }
+
+/* =========================================================
+   视图切换 & 返回键
+   ========================================================= */
+let current = "home";
+function show(v){
+  for (const id of ["home","study","book"]) $("#" + id).hidden = id !== v;
+  current = v;
+  if (v === "home") renderHome();
+  window.scrollTo(0, 0);
+}
+window.appBack = function(){
+  if (current === "study"){ exitStudy(); return true; }
+  if (current === "book"){ show("home"); return true; }
+  return false;
+};
+
+/* =========================================================
+   首页
+   ========================================================= */
+function renderHome(){
+  const ids = Object.keys(S.book).filter(id => CARDS.has(id));
+  const due = dueIds().length;
+  $("#nDue").textContent = due;
+  $("#nBook").textContent = ids.length;
+  $("#nMastered").textContent = Object.keys(S.mastered).length;
+  $("#btnReview").disabled = due === 0;
+  $("#btnReview").textContent = due ? `开始复习（${due}）` : "暂无待复习";
+  const future = ids.map(id => S.book[id].due).filter(t => t > Date.now()).sort((a,b) => a-b);
+  $("#nextDue").textContent = !ids.length ? "学习时点 ☆ 把词加入单词本，程序会按遗忘曲线安排复习。"
+    : !due && future.length ? `下一批复习：${relDays(future[0])}` : "";
+
+  const L = S.last;
+  if (L && L.list && L.list.length){
+    $("#resume").hidden = false;
+    $("#resumeT").textContent = "继续学习：" + L.title;
+    $("#resumeS").textContent = `第 ${Math.min(L.pos + 1, L.list.length)} / ${L.list.length} 张`;
+  } else $("#resume").hidden = true;
+
+  // 单元进度
+  for (const u of UNITS){
+    const el = document.getElementById("u" + u.u); if (!el) continue;
+    const seen = u.ids.filter(id => S.seen[id]).length;
+    el.querySelector(".pbar i").style.width = (u.ids.length ? seen / u.ids.length * 100 : 0) + "%";
+    el.querySelector(".cnt").textContent = `${seen}/${u.ids.length}`;
+    if (el.classList.contains("open")) fillLessons(el, u);
+  }
+}
+function buildUnits(){
+  const box = $("#units"); box.innerHTML = "";
+  for (const u of UNITS){
+    const div = document.createElement("div");
+    div.className = "unit"; div.id = "u" + u.u;
+    const range = `Lesson ${u.from}–${u.to}`;
+    div.innerHTML = `<button><span class="no">单元 ${u.u}</span><span class="meta"><b>${range}</b><small><span class="cnt mono"></span> 张 · ${u.lessons.length} 课</small><div class="pbar"><i></i></div></span><span class="chev">›</span></button>`;
+    div.firstChild.onclick = () => {
+      const open = div.classList.toggle("open");
+      if (open) fillLessons(div, u); else div.querySelector(".lessons")?.remove();
+    };
+    box.appendChild(div);
+  }
+}
+function fillLessons(div, u){
+  let box = div.querySelector(".lessons");
+  if (!box){ box = document.createElement("div"); box.className = "lessons"; div.appendChild(box); }
+  box.innerHTML = "";
+  for (const L of u.lessons){
+    const seen = L.ids.filter(id => S.seen[id]).length;
+    const b = document.createElement("button"); b.className = "lesson";
+    b.innerHTML = `<span class="ln">${pad(L.n)}</span><span class="lt">${esc(L.t || "Lesson " + L.n)}</span><span class="lc ${seen === L.ids.length ? "done" : ""}">${seen}/${L.ids.length}</span>`;
+    b.onclick = () => startLearn(L.ids, `Lesson ${L.n}`, {kind:"lesson", n:L.n});
+    box.appendChild(b);
+  }
+  const all = document.createElement("button"); all.className = "btn";
+  all.textContent = `学习整个单元（${u.ids.length} 张）`;
+  all.onclick = () => startLearn(u.ids, `单元 ${u.u} · L${u.from}–${u.to}`, {kind:"unit", u:u.u});
+  box.appendChild(all);
+}
+
+/* =========================================================
+   学习 / 复习
+   ========================================================= */
+const ST = {mode:"learn", list:[], pos:0, title:"", ref:null, flipped:false, busy:false, done:0, total:0};
+const card = $("#card"), inner = $("#inner");
+
+function startLearn(ids, title, ref, pos = 0){
+  let list = ids.slice();
+  if (S.settings.shuffle && !pos) shuffle(list);
+  Object.assign(ST, {mode:"learn", list, pos, title, ref, done:0, total:list.length});
+  S.last = {title, ref, list, pos}; save();
+  enterStudy();
+}
+function startReview(){
+  const list = dueIds();
+  if (!list.length){ toast("今天没有要复习的词"); return; }
+  Object.assign(ST, {mode:"review", list, pos:0, title:"单词本复习", ref:null, done:0, total:list.length});
+  enterStudy();
+}
+function enterStudy(){
+  show("study");
+  $("#ctrlLearn").hidden = ST.mode !== "learn";
+  $("#ctrlReview").hidden = ST.mode !== "review";
+  $("#sAddAll").hidden = ST.mode !== "learn";
+  $("#done").hidden = true; card.hidden = false;
+  render(true);
+  enterAnim();
+}
+function exitStudy(){
+  if (hasNative && Android.stop) Android.stop(); else if (window.speechSynthesis) speechSynthesis.cancel();
+  if (ST.mode === "learn" && S.last){ S.last.pos = ST.pos; save(true); }
+  show("home");
+}
+
+const curId = () => ST.list[ST.pos];
+const curCard = () => CARDS.get(curId());
+
+const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
+function esFace(c){
+  return `<div class="ftag"><span>L${pad(c.n)} · ${esc(c.lt)}</span><span>ES</span></div>
+  <div class="fbody">
+    <div class="term ${sizeCls(c.es, 22, 48)}">${esc(c.es)}</div>
+    <button class="spk" data-say="term" aria-label="朗读单词">${SPK}</button>
+    ${c.ex ? `<div class="ex ${c.ex.length > 140 ? "l" : ""}"><button class="spk sm" data-say="ex" aria-label="朗读例句">${SPK}</button><span>${esc(c.ex)}</span></div>` : ""}
+  </div>`;
+}
+function enFace(c, showEs){
+  return `<div class="ftag"><span>L${pad(c.n)} · #${c.i}</span><span>EN</span></div>
+  <div class="fbody">
+    ${c.img ? `<div class="pic"><img src="img/${c.img}.webp" alt="" draggable="false"></div>` : ""}
+    <div class="def ${sizeCls(c.en, 40, 110)}">${esc(c.en)}</div>
+    ${showEs ? `<div class="esmini">${esc(c.es)}</div>` : ""}
+  </div>`;
+}
+function render(first){
+  const c = curCard(); if (!c) return;
+  const esFirst = S.settings.front === "es";
+  $("#faceA").innerHTML = esFirst ? esFace(c) : enFace(c, false);
+  $("#faceB").innerHTML = esFirst ? enFace(c, true) : esFace(c);
+  // 换卡时立刻回到正面（不播放翻转动画）
+  inner.classList.add("instant"); card.classList.remove("flipped"); ST.flipped = false;
+  void inner.offsetWidth; inner.classList.remove("instant");
+  // 顶栏
+  $("#stTitle").textContent = ST.title;
+  if (ST.mode === "learn"){
+    $("#stCount").textContent = `${ST.pos + 1} / ${ST.list.length}`;
+    $("#stProg").style.width = ((ST.pos + 1) / ST.list.length * 100) + "%";
+    $("#bPrev").disabled = ST.pos === 0;
+    $("#bStar").classList.toggle("on", inBook(c.id));
+    S.seen[c.id] = 1;
+    if (S.last){ S.last.pos = ST.pos; }
+    save();
+  } else {
+    $("#stCount").textContent = `剩余 ${ST.list.length - ST.pos} · 已完成 ${ST.done}`;
+    $("#stProg").style.width = (ST.done / Math.max(ST.total, 1) * 100) + "%";
+    $("#bShow").hidden = false; $("#rates").hidden = true;
+  }
+  // 预加载下一张的图
+  const nx = CARDS.get(ST.list[ST.pos + 1]);
+  if (nx && nx.img) new Image().src = `img/${nx.img}.webp`;
+  // 自动发音：西语面朝上时读
+  if (S.settings.auto && esFirst) autoSay(c);
+}
+function autoSay(c){ speak(S.settings.ex && c.ex ? c.es + ". " + c.ex : c.es); }
+
+function flip(){
+  if (ST.busy) return;
+  ST.flipped = !ST.flipped;
+  card.classList.toggle("flipped", ST.flipped);
+  const c = curCard();
+  const esVisible = (S.settings.front === "es") !== ST.flipped;
+  if (S.settings.auto && esVisible && S.settings.front === "en") autoSay(c);
+  if (ST.mode === "review" && ST.flipped) showRates();
+}
+
+/* 切换动画：当前卡向一侧飞出，新卡从另一侧滑入 */
+function go(dir){
+  if (ST.busy) return;
+  const np = ST.pos + dir;
+  if (np < 0) return;
+  if (np >= ST.list.length){ finish(dir); return; }
+  slide(dir, () => { ST.pos = np; render(); });
+}
+function slide(dir, swap, from){
+  ST.busy = true;
+  const out = card.animate([
+    {transform: from || "translateX(0) rotate(0)", opacity: 1},
+    {transform: `translateX(${-dir * 115}%) rotate(${-dir * 10}deg)`, opacity: 0}
+  ], {duration: 230, easing: "cubic-bezier(.4,0,1,1)"});
+  out.onfinish = () => {
+    swap();
+    card.animate([
+      {transform: `translateX(${dir * 60}%) scale(.92)`, opacity: 0},
+      {transform: "translateX(0) scale(1)", opacity: 1}
+    ], {duration: 300, easing: "cubic-bezier(.2,.9,.3,1.15)"}).onfinish = () => { ST.busy = false; };
+  };
+}
+function enterAnim(){
+  card.animate([{transform:"translateY(30px) scale(.95)", opacity:0}, {transform:"none", opacity:1}], {duration:320, easing:"cubic-bezier(.2,.9,.3,1.1)"});
+}
+function finish(dir){
+  if (ST.mode === "learn"){ S.last = null; save(); }
+  slide(dir || 1, () => {
+    card.hidden = true;
+    $("#ctrlLearn").hidden = true; $("#ctrlReview").hidden = true;
+    const d = $("#done"); d.hidden = false;
+    if (ST.mode === "review"){
+      d.innerHTML = `<div class="big">复习完成</div><p class="sub">本轮复习了 ${ST.total} 个词</p><button class="btn" id="dHome">回到首页</button>`;
+    } else {
+      const next = nextGroup();
+      d.innerHTML = `<div class="big">本组完成 🎉</div><p class="sub">${esc(ST.title)} · ${ST.list.length} 张</p>
+        ${next ? `<button class="btn" id="dNext">下一组：${esc(next.title)}</button>` : ""}
+        <button class="btn ghost" id="dAgain">再学一遍</button><button class="linkbtn" id="dHome">回到首页</button>`;
+      if (next) $("#dNext").onclick = () => startLearn(next.ids, next.title, next.ref);
+      $("#dAgain").onclick = () => startLearn(ST.list, ST.title, ST.ref);
+    }
+    $("#dHome").onclick = () => show("home");
+    $("#stCount").textContent = "完成"; $("#stProg").style.width = "100%";
+  });
+}
+function nextGroup(){
+  const r = ST.ref; if (!r) return null;
+  if (r.kind === "unit"){ const u = UNITS.find(x => x.u > r.u); return u && {ids:u.ids, title:`单元 ${u.u} · L${u.from}–${u.to}`, ref:{kind:"unit", u:u.u}}; }
+  if (r.kind === "lesson"){ const L = LESSONS.find(x => x.n > r.n); return L && {ids:L.ids, title:`Lesson ${L.n}`, ref:{kind:"lesson", n:L.n}}; }
+  return null;
+}
+
+/* 复习评分 */
+function showRates(){
+  $("#bShow").hidden = true; $("#rates").hidden = false;
+  const it = S.book[curId()] || newItem();
+  document.querySelectorAll(".rate").forEach(b => {
+    const q = +b.dataset.q, n = schedule(it, q);
+    b.querySelector("small").textContent = isMasterStep(n, q) ? "掌握✓" : ivLabel(n.iv);
+  });
+}
+function rate(q){
+  if (ST.busy) return;
+  const id = curId(), it = S.book[id]; if (!it) { go(1); return; }
+  const n = schedule(it, q);
+  if (isMasterStep(n, q)){
+    delete S.book[id]; S.mastered[id] = Date.now();
+    toast("已掌握，自动移出单词本 ✓");
+  } else S.book[id] = n;
+  if (q === 0){
+    // 忘了：本轮稍后再出现一次
+    const at = Math.min(ST.list.length, ST.pos + 4);
+    ST.list.splice(at, 0, id);
+  } else ST.done++;
+  save();
+  go(1);
+}
+
+/* ---------- 手势：点击翻转，左右滑动切换 ---------- */
+(function gestures(){
+  let sx = 0, sy = 0, dx = 0, drag = false, down = false, t0 = 0;
+  card.addEventListener("pointerdown", e => {
+    if (e.target.closest("button")) return;
+    down = true; drag = false; sx = e.clientX; sy = e.clientY; dx = 0; t0 = Date.now();
+  });
+  card.addEventListener("pointermove", e => {
+    if (!down || ST.busy) return;
+    dx = e.clientX - sx; const dy = e.clientY - sy;
+    if (!drag && Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2 && ST.mode === "learn"){ drag = true; card.setPointerCapture(e.pointerId); }
+    if (drag) card.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
+  });
+  const end = e => {
+    if (!down) return; down = false;
+    if (drag){
+      const from = card.style.transform; card.style.transform = "";
+      const fast = Math.abs(dx) / Math.max(1, Date.now() - t0) > 0.5;
+      const dir = dx < 0 ? 1 : -1, np = ST.pos + dir;
+      if ((Math.abs(dx) > 80 || (fast && Math.abs(dx) > 30)) && np >= 0){
+        if (np >= ST.list.length) finish(dir);
+        else slide(dir, () => { ST.pos = np; render(); }, from);
+      } else card.animate([{transform: from}, {transform: "none"}], {duration: 220, easing: "cubic-bezier(.2,.9,.3,1.2)"});
+      drag = false;
+    } else if (e.type === "pointerup" && Math.abs(e.clientX - sx) < 10 && Math.abs(e.clientY - sy) < 10) flip();
+  };
+  card.addEventListener("pointerup", end);
+  card.addEventListener("pointercancel", end);
+  card.addEventListener("click", e => {
+    const b = e.target.closest("[data-say]"); if (!b) return;
+    e.stopPropagation();
+    const c = curCard(); speak(b.dataset.say === "ex" ? c.ex : c.es);
+  });
+})();
+
+/* =========================================================
+   单词本列表
+   ========================================================= */
+let bkTab = "due", bkLimit = 200;
+function renderBook(){
+  document.querySelectorAll("#bkTabs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.t === bkTab));
+  const q = $("#bkSearch").value.trim().toLowerCase();
+  let ids;
+  if (bkTab === "mastered") ids = Object.keys(S.mastered).filter(id => CARDS.has(id)).sort((a,b) => S.mastered[b] - S.mastered[a]);
+  else if (bkTab === "due") ids = dueIds();
+  else ids = Object.keys(S.book).filter(id => CARDS.has(id)).sort((a,b) => S.book[a].due - S.book[b].due);
+  if (q) ids = ids.filter(id => { const c = CARDS.get(id); return (c.es + " " + c.en).toLowerCase().includes(q); });
+  const box = $("#bkList"); box.innerHTML = "";
+  if (!ids.length){ box.innerHTML = `<div class="empty">${bkTab === "due" ? "现在没有要复习的词" : bkTab === "mastered" ? "还没有已掌握的词" : "单词本是空的<br>学习时点 ☆ 加入"}</div>`; return; }
+  for (const id of ids.slice(0, bkLimit)){
+    const c = CARDS.get(id), it = S.book[id];
+    const div = document.createElement("div"); div.className = "bitem";
+    const meta = bkTab === "mastered" ? `L${pad(c.n)} · 掌握于 ${new Date(S.mastered[id]).toLocaleDateString()}`
+      : `L${pad(c.n)} · 下次 ${relDays(it.due)} · 间隔 ${it.iv ? ivLabel(it.iv) : "新"}${it.l ? " · 忘记 " + it.l + " 次" : ""}`;
+    div.innerHTML = `<div><b>${esc(c.es)}</b> <span class="en">${esc(c.en)}</span><small>${meta}</small></div>
+      <button class="x">${bkTab === "mastered" ? "放回单词本" : "移除"}</button>`;
+    div.querySelector("b").onclick = () => speak(c.es);
+    div.querySelector(".x").onclick = () => {
+      if (bkTab === "mastered"){ addToBook(id); toast("已放回单词本"); } else { removeFromBook(id); toast("已移出单词本"); }
+      renderBook();
+    };
+    box.appendChild(div);
+  }
+  if (ids.length > bkLimit){
+    const m = document.createElement("button"); m.className = "btn ghost"; m.textContent = `显示更多（还有 ${ids.length - bkLimit}）`;
+    m.onclick = () => { bkLimit += 300; renderBook(); }; box.appendChild(m);
+  }
+}
+
+/* =========================================================
+   设置 & 备份
+   ========================================================= */
+function bindSettings(){
+  const s = S.settings;
+  const sw = (id, k) => { const el = $(id); el.checked = !!s[k]; el.onchange = () => { s[k] = el.checked; save(); }; };
+  sw("#sAuto", "auto"); sw("#sEx", "ex"); sw("#sShuffle", "shuffle");
+  const seg = (id, k, num) => {
+    const btns = document.querySelectorAll(id + " button");
+    const upd = () => btns.forEach(b => b.setAttribute("aria-pressed", String(s[k]) === b.dataset.v));
+    btns.forEach(b => b.onclick = () => { s[k] = num ? +b.dataset.v : b.dataset.v; upd(); save(); });
+    upd();
+  };
+  seg("#sFront", "front"); seg("#sMaster", "master", true);
+  const r = $("#sRate"); r.value = s.rate; $("#sRateV").textContent = s.rate.toFixed(2);
+  r.oninput = () => { s.rate = +r.value; $("#sRateV").textContent = s.rate.toFixed(2); };
+  r.onchange = () => { applyRate(); save(); speak("¡Hola! ¿Qué tal?"); };
+
+  $("#btnExport").onclick = () => {
+    const body = JSON.stringify({app:"esp_flashcard", v:1, at:new Date().toISOString(), data:S});
+    const name = `西语闪卡备份_${new Date().toISOString().slice(0,10)}.json`;
+    if (window.Android && Android.saveFile) Android.saveFile(name, body);
+    else { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([body], {type:"application/json"})); a.download = name; a.click(); }
+  };
+  window.onSaveResult = (ok, info) => toast(ok ? "已导出 " + info : "导出未完成：" + info);
+  $("#btnImport").onclick = () => $("#importFile").click();
+  $("#importFile").onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      if (j.app !== "esp_flashcard" || !j.data) throw new Error("不是本应用的备份文件");
+      if (!confirm("导入会覆盖当前的学习进度和单词本，确定吗？")) return;
+      localStorage.setItem(KEY, JSON.stringify(j.data)); load();
+      bindSettings(); applyRate(); renderHome(); toast("已导入备份");
+    } catch(err){ toast("导入失败：" + err.message); }
+  };
+  try { const v = window.Android && Android.appVersion && Android.appVersion(); $("#ver").textContent = v ? "版本 " + v : ""; } catch(e){}
+}
+
+/* =========================================================
+   启动
+   ========================================================= */
+async function init(){
+  load();
+  const res = await fetch("cards.json");
+  const data = await res.json();
+  LESSONS = data.lessons.map(L => ({n:L.n, t:L.t, ids:[]}));
+  for (let k = 0; k < data.lessons.length; k++){
+    const L = data.lessons[k], LL = LESSONS[k];
+    BYN.set(L.n, LL);
+    for (const [i, es, en, ex, img] of L.c){
+      const id = L.n + "_" + i;
+      CARDS.set(id, {id, n:L.n, lt:L.t, i, es, en, ex, img});
+      LL.ids.push(id);
+    }
+  }
+  const maxN = Math.max(...LESSONS.map(L => L.n));
+  for (let u = 1; (u - 1) * 5 + 1 <= maxN; u++){
+    const from = (u - 1) * 5 + 1, to = Math.min(u * 5, maxN);
+    const lessons = LESSONS.filter(L => L.n >= from && L.n <= to);
+    if (!lessons.length) continue;
+    UNITS.push({u, from, to, lessons, ids: lessons.flatMap(L => L.ids)});
+  }
+  $("#totals").textContent = `${LESSONS.length} 课 · ${CARDS.size} 张`;
+
+  buildUnits(); bindSettings(); applyRate();
+
+  $("#btnReview").onclick = startReview;
+  $("#btnBookList").onclick = () => { bkTab = dueIds().length ? "due" : "all"; bkLimit = 200; $("#bkSearch").value = ""; show("book"); renderBook(); };
+  $("#bkBack").onclick = () => show("home");
+  $("#bkTabs").onclick = e => { const b = e.target.closest("button"); if (b){ bkTab = b.dataset.t; bkLimit = 200; renderBook(); } };
+  $("#bkSearch").oninput = () => { bkLimit = 200; renderBook(); };
+  $("#resume").onclick = () => { const L = S.last; ST.mode = "learn"; ST.done = 0; ST.list = L.list.filter(id => CARDS.has(id)); ST.pos = Math.min(L.pos, ST.list.length - 1); ST.title = L.title; ST.ref = L.ref; ST.total = ST.list.length; enterStudy(); };
+  $("#sBack").onclick = exitStudy;
+  $("#bPrev").onclick = () => go(-1);
+  $("#bNext").onclick = () => go(1);
+  $("#bFlip").onclick = flip;
+  $("#bShow").onclick = flip;
+  $("#bSpeak").onclick = () => speak(curCard().es);
+  $("#bStar").onclick = () => {
+    const id = curId();
+    if (inBook(id)){ removeFromBook(id); toast("已移出单词本"); }
+    else { addToBook(id); toast("已加入单词本，今天开始复习"); }
+    $("#bStar").classList.toggle("on", inBook(id));
+    $("#bStar").animate([{transform:"scale(1)"}, {transform:"scale(1.25)"}, {transform:"scale(1)"}], {duration:260});
+  };
+  $("#sAddAll").onclick = () => {
+    let n = 0; for (const id of ST.list) if (addToBook(id)) n++;
+    $("#bStar").classList.toggle("on", inBook(curId()));
+    toast(n ? `本组 ${n} 个词已加入单词本` : "本组的词都已经在单词本里了");
+  };
+  $("#rates").onclick = e => { const b = e.target.closest(".rate"); if (b) rate(+b.dataset.q); };
+
+  document.addEventListener("keydown", e => {
+    if (current !== "study" || e.target.tagName === "INPUT") return;
+    if (e.key === "ArrowRight" && ST.mode === "learn") go(1);
+    else if (e.key === "ArrowLeft" && ST.mode === "learn") go(-1);
+    else if (e.key === " " || e.key === "Enter"){ e.preventDefault(); flip(); }
+    else if (ST.mode === "review" && ST.flipped && "1234".includes(e.key)) rate(+e.key - 1);
+    else if (e.key === "Escape") exitStudy();
+  });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) save(true); else if (current === "home") renderHome(); });
+
+  $("#loading").hidden = true;
+  show("home");
+}
+init().catch(e => { $("#loading").textContent = "加载失败：" + e.message; });
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+name: Build APK
+
+# 推送到 main 分支时自动编译，并把 APK 发布到 Releases 页面。
+# 也可以在 Actions 页面手动点 "Run workflow" 重新编译。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check cards.json and images
+        run: |
+          python3 - <<'PY'
+          import json, os
+          d = json.load(open('web/cards.json', encoding='utf-8'))['lessons']
+          n = sum(len(L['c']) for L in d)
+          miss = [c[4] for L in d for c in L['c'] if c[4] and not os.path.exists(f"web/img/{c[4]}.webp")]
+          print(f"::notice title=Data::{len(d)} lessons, {n} cards, {len(miss)} missing images")
+          assert len(miss) == 0, miss[:10]
+          PY
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: |
+          set -o pipefail
+          if ! ./gradlew --no-daemon assembleRelease 2>&1 | tee build.log; then
+            msg=$(grep -A10 "What went wrong" build.log | head -12 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Gradle build failed::${msg:-see log}"
+            exit 1
+          fi
+
+      - name: Verify APK
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          [ -f "$APK" ] || { echo "::error::APK not found"; exit 1; }
+          python3 - "$APK" <<'PY' || exit 1
+          import sys, zipfile
+          names = set(zipfile.ZipFile(sys.argv[1]).namelist())
+          need = ["assets/index.html", "assets/cards.json", "assets/img/001_01_def.webp"]
+          missing = [n for n in need if n not in names]
+          if missing:
+              print(f"::error title=APK contents::missing {missing}"); sys.exit(1)
+          imgs = sum(1 for n in names if n.startswith("assets/img/"))
+          print(f"::notice title=APK contents::{imgs} images packed")
+          PY
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ 2>/dev/null | sort -V | tail -1)
+          if [ -x "${BT}apksigner" ]; then "${BT}apksigner" verify "$APK" || exit 1; fi
+          ls -la "$APK"
+
+      - name: Rename APK
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk "out/esp_flashcard-v1.0.${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esp_flashcard-v1.0.${{ github.run_number }}
+          path: out/*.apk
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: 西语闪卡 v1.0.${{ github.run_number }}
+          body: |
+            自动编译自 ${{ github.sha }}。
+            下载下面的 .apk 文件，在手机上安装即可（新版本可以直接覆盖安装，学习进度和单词本会保留）。
+          files: out/*.apk
+          make_latest: true
