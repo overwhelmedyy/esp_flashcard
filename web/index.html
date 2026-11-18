@@ -66,7 +66,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:400}
 .unit>button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;width:100%;padding:12px 14px;cursor:pointer}
 .unit .no{font-family:var(--mono);font-weight:600;font-size:.82rem;color:var(--accent);background:var(--accent-soft);border-radius:8px;padding:4px 7px;min-width:52px;text-align:center}
 .unit .meta{min-width:0}
-.unit .meta b{font-weight:500;font-size:.95rem}
+.unit .meta b{font-weight:500;font-size:.88rem}
 .unit .meta small{display:block;color:var(--muted);font-size:.75rem}
 .pbar{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}
 .pbar i{display:block;height:100%;background:var(--ok);width:0}
@@ -76,10 +76,35 @@ h1 em{font-style:italic;color:var(--accent);font-weight:400}
 .lesson{all:unset;box-sizing:border-box;display:grid;grid-template-columns:42px 1fr auto;gap:8px;align-items:center;width:100%;padding:9px 6px;border-radius:10px;cursor:pointer}
 .lesson:active{background:var(--bg)}
 .lesson .ln{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
-.lesson .lt{font-family:var(--display);font-size:1.02rem;line-height:1.25;overflow-wrap:anywhere}
+.lesson .lt{font-size:.86rem;line-height:1.35;overflow-wrap:anywhere}
 .lesson .lc{font-family:var(--mono);font-size:.72rem;color:var(--muted);white-space:nowrap}
 .lesson .lc.done{color:var(--ok)}
 .lessons .btn{width:100%;margin-top:8px}
+/* 首页整体字号和按钮缩小一点 */
+#home{font-size:14px}
+#home .wrap{gap:14px;padding-top:calc(14px + env(safe-area-inset-top,0px))}
+#home .panel{padding:12px 14px}
+#home .label{margin-bottom:8px;font-size:.72rem}
+#home .btn{font-size:.85rem;padding:8px 12px;border-radius:10px}
+#home .stat{padding:6px 4px}
+#home .stat b{font-size:1.15rem}
+#home .stat span{font-size:.7rem}
+#home .bookpanel{margin-bottom:10px}
+#home .resume{padding:9px 12px;font-size:.88rem}
+#home .resume .ic{width:30px;height:30px}
+#home .unit>button{padding:10px 12px;gap:10px}
+#home .unit .no{font-size:.72rem;min-width:44px;padding:3px 6px}
+#home .lesson{padding:8px 4px;grid-template-columns:44px 1fr auto}
+#home .lesson .ln{font-size:.72rem}
+#home details.panel summary{font-size:.9rem}
+#home .set{font-size:.88rem;padding:9px 0}
+/* 系列标签页 */
+.stabs{position:sticky;top:0;z-index:5;background:var(--bg);padding:6px 0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.stabs button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:7px 4px;font-size:.85rem;cursor:pointer;line-height:1.25}
+.stabs button small{display:block;font-family:var(--mono);font-size:.66rem;color:var(--muted)}
+.stabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.stabs button[aria-pressed="true"] small{color:#fff;opacity:.85}
+.subhead{font-size:.72rem;color:var(--muted);letter-spacing:.06em;margin:10px 2px 0}
 
 /* 设置 */
 details.panel summary{cursor:pointer;font-weight:500;list-style:none;display:flex;justify-content:space-between}
@@ -188,11 +213,6 @@ input[type=range]{accent-color:var(--accent);width:130px}
 <!-- ============ 首页 ============ -->
 <section id="home" class="view" hidden>
   <div class="wrap">
-    <header class="top">
-      <h1>西语<em>闪卡</em></h1>
-      <span class="sub mono" id="totals"></span>
-    </header>
-
     <div class="panel">
       <p class="label">单词本</p>
       <div class="bookpanel">
@@ -213,7 +233,7 @@ input[type=range]{accent-color:var(--accent);width:130px}
     </button>
 
     <div>
-      <p class="label">单元（每 5 课一个单元）</p>
+      <div class="stabs" id="stabs"></div>
       <div class="units" id="units"></div>
     </div>
 
@@ -296,11 +316,11 @@ input[type=range]{accent-color:var(--accent);width:130px}
    ========================================================= */
 const $ = s => document.querySelector(s);
 const DAY = 86400000;
-let LESSONS = [], BYN = new Map(), CARDS = new Map(), UNITS = [];
+let LESSONS = [], BYN = new Map(), CARDS = new Map(), SERIES = {};
 
 /* ---------- 持久化 ---------- */
 const KEY = "fc.v1";
-const DEF = {settings:{auto:true, ex:false, front:"es", shuffle:false, rate:0.9, master:60}, seen:{}, book:{}, mastered:{}, last:null};
+const DEF = {settings:{auto:true, ex:false, front:"es", shuffle:false, rate:0.9, master:60, tab:"A"}, seen:{}, book:{}, mastered:{}, last:null};
 let S;
 function load(){
   try { S = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e){ S = {}; }
@@ -422,27 +442,46 @@ function renderHome(){
     $("#resumeS").textContent = `第 ${Math.min(L.pos + 1, L.list.length)} / ${L.list.length} 张`;
   } else $("#resume").hidden = true;
 
-  // 单元进度
-  for (const u of UNITS){
-    const el = document.getElementById("u" + u.u); if (!el) continue;
+  // 单元进度（只更新当前标签页里的单元）
+  for (const u of tabUnits()){
+    const el = document.getElementById("u" + u.id); if (!el) continue;
     const seen = u.ids.filter(id => S.seen[id]).length;
     el.querySelector(".pbar i").style.width = (u.ids.length ? seen / u.ids.length * 100 : 0) + "%";
     el.querySelector(".cnt").textContent = `${seen}/${u.ids.length}`;
     if (el.classList.contains("open")) fillLessons(el, u);
   }
 }
+
+/* 4 个标签页：独白 / 对话 / 访谈 / 短篇（短篇页末尾附"其他材料"） */
+const TABS = [{key:"A", name:"独白"}, {key:"B", name:"对话"}, {key:"C", name:"访谈"}, {key:"D", name:"短篇"}];
+const tabSeries = t => t === "D" ? ["D", "O"] : [t];
+const tabUnits = () => tabSeries(S.settings.tab || "A").flatMap(k => SERIES[k] ? SERIES[k].units : []);
+function buildTabs(){
+  const box = $("#stabs"); box.innerHTML = "";
+  for (const t of TABS){
+    const b = document.createElement("button");
+    const n = tabSeries(t.key).reduce((a, k) => a + (SERIES[k] ? SERIES[k].lessons.length : 0), 0);
+    b.innerHTML = `${t.name}<small>${n} 课</small>`;
+    b.setAttribute("aria-pressed", (S.settings.tab || "A") === t.key);
+    b.onclick = () => { S.settings.tab = t.key; save(); buildTabs(); buildUnits(); renderHome(); };
+    box.appendChild(b);
+  }
+}
 function buildUnits(){
   const box = $("#units"); box.innerHTML = "";
-  for (const u of UNITS){
-    const div = document.createElement("div");
-    div.className = "unit"; div.id = "u" + u.u;
-    const range = `Lesson ${u.from}–${u.to}`;
-    div.innerHTML = `<button><span class="no">单元 ${u.u}</span><span class="meta"><b>${range}</b><small><span class="cnt mono"></span> 张 · ${u.lessons.length} 课</small><div class="pbar"><i></i></div></span><span class="chev">›</span></button>`;
-    div.firstChild.onclick = () => {
-      const open = div.classList.toggle("open");
-      if (open) fillLessons(div, u); else div.querySelector(".lessons")?.remove();
-    };
-    box.appendChild(div);
+  for (const k of tabSeries(S.settings.tab || "A")){
+    const sr = SERIES[k]; if (!sr) continue;
+    if (k === "O"){ const h = document.createElement("p"); h.className = "subhead"; h.textContent = "其他材料（视频、笔记等）"; box.appendChild(h); }
+    for (const u of sr.units){
+      const div = document.createElement("div");
+      div.className = "unit"; div.id = "u" + u.id;
+      div.innerHTML = `<button><span class="no">单元 ${u.u}</span><span class="meta"><b>${u.range}</b><small><span class="cnt mono"></span> 张 · ${u.lessons.length} 课</small><div class="pbar"><i></i></div></span><span class="chev">›</span></button>`;
+      div.firstChild.onclick = () => {
+        const open = div.classList.toggle("open");
+        if (open) fillLessons(div, u); else div.querySelector(".lessons")?.remove();
+      };
+      box.appendChild(div);
+    }
   }
 }
 function fillLessons(div, u){
@@ -452,13 +491,13 @@ function fillLessons(div, u){
   for (const L of u.lessons){
     const seen = L.ids.filter(id => S.seen[id]).length;
     const b = document.createElement("button"); b.className = "lesson";
-    b.innerHTML = `<span class="ln">${pad(L.n)}</span><span class="lt">${esc(L.t || "Lesson " + L.n)}</span><span class="lc ${seen === L.ids.length ? "done" : ""}">${seen}/${L.ids.length}</span>`;
-    b.onclick = () => startLearn(L.ids, `Lesson ${L.n}`, {kind:"lesson", n:L.n});
+    b.innerHTML = `<span class="ln">${L.label}</span><span class="lt">${esc(L.t || L.label)}</span><span class="lc ${seen === L.ids.length ? "done" : ""}">${seen}/${L.ids.length}</span>`;
+    b.onclick = () => startLearn(L.ids, `${L.sname} · ${L.label}`, {kind:"lesson", n:L.n});
     box.appendChild(b);
   }
   const all = document.createElement("button"); all.className = "btn";
   all.textContent = `学习整个单元（${u.ids.length} 张）`;
-  all.onclick = () => startLearn(u.ids, `单元 ${u.u} · L${u.from}–${u.to}`, {kind:"unit", u:u.u});
+  all.onclick = () => startLearn(u.ids, u.title, {kind:"unit", id:u.id});
   box.appendChild(all);
 }
 
@@ -503,7 +542,7 @@ const curCard = () => CARDS.get(curId());
 
 const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>';
 function esFace(c){
-  return `<div class="ftag"><span>L${pad(c.n)} · ${esc(c.lt)}</span><span>ES</span></div>
+  return `<div class="ftag"><span>${esc(c.tag)} · ${esc(c.lt)}</span><span>ES</span></div>
   <div class="fbody">
     <div class="term ${sizeCls(c.es, 22, 48)}">${esc(c.es)}</div>
     <button class="spk" data-say="term" aria-label="朗读单词">${SPK}</button>
@@ -511,7 +550,7 @@ function esFace(c){
   </div>`;
 }
 function enFace(c, showEs){
-  return `<div class="ftag"><span>L${pad(c.n)} · #${c.i}</span><span>EN</span></div>
+  return `<div class="ftag"><span>${esc(c.tag)} · #${c.i}</span><span>EN</span></div>
   <div class="fbody">
     ${c.img ? `<div class="pic"><img src="img/${c.img}.webp" alt="" draggable="false"></div>` : ""}
     <div class="def ${sizeCls(c.en, 40, 110)}">${esc(c.en)}</div>
@@ -623,8 +662,18 @@ function finish(dir, from){
 }
 function nextGroup(){
   const r = ST.ref; if (!r) return null;
-  if (r.kind === "unit"){ const u = UNITS.find(x => x.u > r.u); return u && {ids:u.ids, title:`单元 ${u.u} · L${u.from}–${u.to}`, ref:{kind:"unit", u:u.u}}; }
-  if (r.kind === "lesson"){ const L = LESSONS.find(x => x.n > r.n); return L && {ids:L.ids, title:`Lesson ${L.n}`, ref:{kind:"lesson", n:L.n}}; }
+  // 只在同一个系列里往后找
+  if (r.kind === "unit" && r.id){
+    for (const sr of Object.values(SERIES)){
+      const i = sr.units.findIndex(u => u.id === r.id);
+      if (i >= 0){ const u = sr.units[i + 1]; return u && {ids:u.ids, title:u.title, ref:{kind:"unit", id:u.id}}; }
+    }
+  }
+  if (r.kind === "lesson"){
+    const L = BYN.get(r.n); if (!L) return null;
+    const sr = SERIES[L.s], N = sr.lessons[sr.lessons.indexOf(L) + 1];
+    return N && {ids:N.ids, title:`${N.sname} · ${N.label}`, ref:{kind:"lesson", n:N.n}};
+  }
   return null;
 }
 
@@ -720,8 +769,8 @@ function renderBook(){
   for (const id of ids.slice(0, bkLimit)){
     const c = CARDS.get(id), it = S.book[id];
     const div = document.createElement("div"); div.className = "bitem";
-    const meta = bkTab === "mastered" ? `L${pad(c.n)} · 掌握于 ${new Date(S.mastered[id]).toLocaleDateString()}`
-      : `L${pad(c.n)} · 下次 ${relDays(it.due)} · 间隔 ${it.iv ? ivLabel(it.iv) : "新"}${it.l ? " · 忘记 " + it.l + " 次" : ""}`;
+    const meta = bkTab === "mastered" ? `${c.tag} · 掌握于 ${new Date(S.mastered[id]).toLocaleDateString()}`
+      : `${c.tag} · 下次 ${relDays(it.due)} · 间隔 ${it.iv ? ivLabel(it.iv) : "新"}${it.l ? " · 忘记 " + it.l + " 次" : ""}`;
     div.innerHTML = `<div><b>${esc(c.es)}</b> <span class="en">${esc(c.en)}</span><small>${meta}</small></div>
       <button class="x">${bkTab === "mastered" ? "放回单词本" : "移除"}</button>`;
     div.querySelector("b").onclick = () => speak(c.es);
@@ -783,26 +832,40 @@ async function init(){
   load();
   const res = await fetch("cards.json");
   const data = await res.json();
-  LESSONS = data.lessons.map(L => ({n:L.n, t:L.t, ids:[]}));
-  for (let k = 0; k < data.lessons.length; k++){
-    const L = data.lessons[k], LL = LESSONS[k];
+  // 系列：A 独白 / B 对话 / C 访谈 / D 短篇 / O 其他材料
+  const SNAME = {A:"独白", B:"对话", C:"访谈", D:"短篇", O:"其他"};
+  // 课名去掉开头的 "Episodio 12 - " / "E134 " / "EP 99 " 等，集数已经单独显示
+  const cleanT = t => t.replace(/^\s*(Episodio(\s+número)?\s*-?\s*\d+|EP?\s*\d+)\s*[-–:.]?\s*/i, "").trim() || t;
+  LESSONS = data.lessons.map(L => ({n:L.n, t:(L.k != null ? cleanT(L.t) : L.t), s:L.s, k:L.k, sname:SNAME[L.s] || L.s, ids:[]}));
+  for (let j = 0; j < data.lessons.length; j++){
+    const L = data.lessons[j], LL = LESSONS[j];
     BYN.set(L.n, LL);
-    for (const [i, es, en, ex, img] of L.c){
-      const id = L.n + "_" + i;
-      CARDS.set(id, {id, n:L.n, lt:L.t, i, es, en, ex, img});
-      LL.ids.push(id);
+  }
+  for (const s of Object.keys(SNAME)){
+    // 有集数的按集数从小到大；同一集数、或没有集数的，按原始顺序倒过来（原始顺序是新的在前）
+    const ls = LESSONS.filter(L => L.s === s).sort((a, b) => (a.k ?? 0) - (b.k ?? 0) || b.n - a.n);
+    if (!ls.length) continue;
+    const numbered = s === "A" || s === "B" || s === "C";
+    ls.forEach((L, i) => { L.idx = i + 1; L.label = numbered ? `Ep ${L.k}` : `第 ${i + 1} 篇`; });
+    const units = [];
+    for (let i = 0; i < ls.length; i += 5){
+      const part = ls.slice(i, i + 5), u = units.length + 1;
+      const range = numbered ? `Ep ${part[0].k}–${part[part.length - 1].k}` : `第 ${part[0].idx}–${part[part.length - 1].idx} 篇`;
+      units.push({id: s + u, s, u, range, lessons: part, title: `${SNAME[s]} 单元 ${u} · ${range}`, ids: []});
+    }
+    SERIES[s] = {key:s, name:SNAME[s], lessons:ls, units};
+  }
+  for (const D of data.lessons){
+    const L = BYN.get(D.n);
+    for (const [i, es, en, ex, img] of D.c){
+      const id = D.n + "_" + i;
+      CARDS.set(id, {id, n:D.n, lt:L.t, tag:`${L.sname} ${L.label}`, i, es, en, ex, img});
+      L.ids.push(id);
     }
   }
-  const maxN = Math.max(...LESSONS.map(L => L.n));
-  for (let u = 1; (u - 1) * 5 + 1 <= maxN; u++){
-    const from = (u - 1) * 5 + 1, to = Math.min(u * 5, maxN);
-    const lessons = LESSONS.filter(L => L.n >= from && L.n <= to);
-    if (!lessons.length) continue;
-    UNITS.push({u, from, to, lessons, ids: lessons.flatMap(L => L.ids)});
-  }
-  $("#totals").textContent = `${LESSONS.length} 课 · ${CARDS.size} 张`;
+  for (const sr of Object.values(SERIES)) for (const u of sr.units) u.ids = u.lessons.flatMap(L => L.ids);
 
-  buildUnits(); bindSettings(); applyRate();
+  buildTabs(); buildUnits(); bindSettings(); applyRate();
 
   $("#btnReview").onclick = startReview;
   $("#btnBookList").onclick = () => { bkTab = dueIds().length ? "due" : "all"; bkLimit = 200; $("#bkSearch").value = ""; show("book"); renderBook(); };
