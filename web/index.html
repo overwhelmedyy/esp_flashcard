@@ -116,6 +116,10 @@ input[type=range]{accent-color:var(--accent);width:130px}
 #study>.sbar{background:var(--bg);margin:-10px -14px 0;padding:10px 14px 0}
 #study>.prog{box-shadow:0 0 0 6px var(--bg)}
 #ctrlLearn,#ctrlReview{background:var(--bg);box-shadow:0 0 0 14px var(--bg)}
+/* 卡片区域里禁止浏览器自己处理触摸（滚动、下拉刷新、左右返回），全部交给手势代码；
+   卡片内部的可滚动区域也要单独设，否则浏览器会在那里接管滑动并取消手势 */
+#study{touch-action:none}
+.card,.card *{touch-action:none}
 .stage{flex:1;position:relative;perspective:1600px;margin:14px 0;min-height:0;touch-action:pan-y}
 .card{position:absolute;inset:0;will-change:transform;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
 .inner{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.3,1.25,.5,1)}
@@ -557,35 +561,47 @@ function flip(){
 }
 
 /* 切换动画：当前卡向一侧飞出，新卡从另一侧滑入 */
-/* axis "y"：上滑下一张（当前卡向上飞出，新卡从下方滑入），下滑上一张；"x"：左右方向 */
-function go(dir, from, axis = "y"){
-  if (ST.busy) return;
-  const np = ST.pos + dir;
-  if (np < 0){ if (from) card.animate([{transform: from}, {transform: "none"}], {duration: 220}); return; }
-  if (np >= ST.list.length){ finish(dir, from, axis); return; }
-  slide(dir, () => { ST.pos = np; render(); }, from, axis);
+/* 上滑下一张：当前卡向上飞出，新卡从下方滑入；下滑上一张反之。
+   动画进行中如果又来了新手势，先把动画立刻跑完（fastForward），不丢手势。 */
+let anims = [];
+function fastForward(){
+  // finish() 会同步跳到终点；onfinish 回调随后排队执行，这里直接手动执行以立即换卡
+  // 飞出动画的回调会创建滑入动画，所以循环到全部结束为止
+  for (let guard = 0; anims.length && guard < 4; guard++){
+    const list = anims; anims = [];
+    for (const a of list){ const cb = a.onfinish; a.onfinish = null; a.finish(); if (cb) cb(); }
+  }
+  anims = []; ST.busy = false;
 }
-function slide(dir, swap, from, axis = "y"){
+function go(dir, from){
+  if (ST.busy) fastForward();
+  const np = ST.pos + dir;
+  if (np < 0){ if (from) card.animate([{transform: from}, {transform: "none"}], {duration: 200, easing: "cubic-bezier(.2,.9,.3,1.2)"}); return; }
+  if (np >= ST.list.length){ finish(dir, from); return; }
+  slide(dir, () => { ST.pos = np; render(); }, from);
+}
+function slide(dir, swap, from){
   ST.busy = true;
-  const T = axis === "y"
-    ? [`translateY(${-dir * 110}%) scale(.96)`, `translateY(${dir * 70}%) scale(.94)`]
-    : [`translateX(${-dir * 115}%) rotate(${-dir * 10}deg)`, `translateX(${dir * 60}%) scale(.92)`];
   const out = card.animate([
     {transform: from || "none", opacity: 1},
-    {transform: T[0], opacity: 0}
-  ], {duration: 230, easing: "cubic-bezier(.4,0,1,1)"});
+    {transform: `translateY(${-dir * 105}%) scale(.96)`, opacity: 0}
+  ], {duration: 170, easing: "cubic-bezier(.4,0,1,1)"});
+  anims = [out];
   out.onfinish = () => {
     swap();
-    card.animate([
-      {transform: T[1], opacity: 0},
+    const inn = card.animate([
+      {transform: `translateY(${dir * 60}%) scale(.95)`, opacity: 0},
       {transform: "none", opacity: 1}
-    ], {duration: 300, easing: "cubic-bezier(.2,.9,.3,1.12)"}).onfinish = () => { ST.busy = false; };
+    ], {duration: 240, easing: "cubic-bezier(.2,.9,.3,1.08)"});
+    anims = [inn];
+    ST.busy = false;          // 新卡一出现就可以接受下一次手势
+    inn.onfinish = () => { anims = []; };
   };
 }
 function enterAnim(){
   card.animate([{transform:"translateY(30px) scale(.95)", opacity:0}, {transform:"none", opacity:1}], {duration:320, easing:"cubic-bezier(.2,.9,.3,1.1)"});
 }
-function finish(dir, from, axis){
+function finish(dir, from){
   if (ST.mode === "learn"){ S.last = null; save(); }
   slide(dir || 1, () => {
     card.hidden = true;
@@ -603,7 +619,7 @@ function finish(dir, from, axis){
     }
     $("#dHome").onclick = () => show("home");
     $("#stCount").textContent = "完成"; $("#stProg").style.width = "100%";
-  }, from, axis);
+  }, from);
 }
 function nextGroup(){
   const r = ST.ref; if (!r) return null;
@@ -640,37 +656,42 @@ function rate(q){
 
 /* ---------- 手势：点击翻转，左右滑动切换 ---------- */
 (function gestures(){
-  // 点击 → 翻转；上滑 → 下一张，下滑 → 上一张（左右滑动同样可以切换）
-  // mode: "" 未定 / "v" 上下拖动 / "h" 左右拖动
-  let sx = 0, sy = 0, dx = 0, dy = 0, mode = "", down = false, t0 = 0;
+  // 点击 → 翻转；上滑 → 下一张，下滑 → 上一张；左右滑动不做任何事。
+  // 判定放宽：位移 > 8px 即开始跟手；松手时位移 > 45px，或最后 100ms 的速度 > 0.3px/ms（且位移 > 15px）就切换。
+  let sx = 0, sy = 0, dx = 0, dy = 0, mode = "", down = false, pts = [];
   card.addEventListener("pointerdown", e => {
-    if (e.target.closest("button") || ST.busy) return;
-    down = true; mode = ""; sx = e.clientX; sy = e.clientY; dx = dy = 0; t0 = Date.now();
+    if (e.target.closest("button")) return;
+    if (ST.busy) fastForward();
+    down = true; mode = ""; sx = e.clientX; sy = e.clientY; dx = dy = 0;
+    pts = [[e.timeStamp, e.clientY]];
+    try { card.setPointerCapture(e.pointerId); } catch(_){}
   });
   card.addEventListener("pointermove", e => {
-    if (!down || ST.busy) return;
+    if (!down) return;
     dx = e.clientX - sx; dy = e.clientY - sy;
-    if (!mode && ST.mode === "learn"){
-      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.2) mode = "v";
-      else if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) mode = "h";
-      if (mode) card.setPointerCapture(e.pointerId);
+    pts.push([e.timeStamp, e.clientY]); if (pts.length > 12) pts.shift();
+    if (!mode && (Math.abs(dx) > 8 || Math.abs(dy) > 8)){
+      // 明显偏水平（水平 > 2 倍垂直）视为左右滑动：忽略；否则算上下滑动
+      mode = Math.abs(dx) > Math.abs(dy) * 2 ? "h" : (ST.mode === "learn" ? "v" : "h");
     }
     if (mode === "v"){
-      // 第一张往下拉、最后一张往上拉时加阻尼
-      const edge = (dy > 0 && ST.pos === 0);
+      const edge = dy > 0 && ST.pos === 0;
       card.style.transform = `translateY(${edge ? dy * 0.3 : dy}px) scale(${1 - Math.min(Math.abs(dy), 300) / 3000})`;
     }
-    if (mode === "h") card.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
   });
   const end = e => {
     if (!down) return; down = false;
     const from = card.style.transform; card.style.transform = "";
-    if (mode){
-      const d = mode === "v" ? dy : dx;
-      const fast = Math.abs(d) / Math.max(1, Date.now() - t0) > 0.5;
-      if (Math.abs(d) > 80 || (fast && Math.abs(d) > 30)) go(d < 0 ? 1 : -1, from, mode === "v" ? "y" : "x");
-      else card.animate([{transform: from}, {transform: "none"}], {duration: 220, easing: "cubic-bezier(.2,.9,.3,1.2)"});
-    } else if (e.type === "pointerup" && Math.abs(dx) < 10 && Math.abs(dy) < 10) flip();
+    if (mode === "v"){
+      const now = e.timeStamp, recent = pts.filter(p => now - p[0] < 100);
+      const p0 = recent[0] || pts[0];
+      const v = (e.clientY - p0[1]) / Math.max(16, now - p0[0]);
+      const go1 = dy < -45 || (v < -0.3 && dy < -15);
+      const go0 = dy > 45 || (v > 0.3 && dy > 15);
+      if (go1) go(1, from);
+      else if (go0) go(-1, from);
+      else card.animate([{transform: from}, {transform: "none"}], {duration: 200, easing: "cubic-bezier(.2,.9,.3,1.2)"});
+    } else if (!mode && e.type === "pointerup") flip();
     mode = "";
   };
   card.addEventListener("pointerup", end);
@@ -790,8 +811,8 @@ async function init(){
   $("#bkSearch").oninput = () => { bkLimit = 200; renderBook(); };
   $("#resume").onclick = () => { const L = S.last; ST.mode = "learn"; ST.done = 0; ST.list = L.list.filter(id => CARDS.has(id)); ST.pos = Math.min(L.pos, ST.list.length - 1); ST.title = L.title; ST.ref = L.ref; ST.total = ST.list.length; enterStudy(); };
   $("#sBack").onclick = exitStudy;
-  $("#bPrev").onclick = () => go(-1, null, "x");
-  $("#bNext").onclick = () => go(1, null, "x");
+  $("#bPrev").onclick = () => go(-1);
+  $("#bNext").onclick = () => go(1);
   $("#bFlip").onclick = () => flip();
   $("#bShow").onclick = () => flip();
   $("#bSpeak").onclick = () => speak(curCard().es);
@@ -811,8 +832,8 @@ async function init(){
 
   document.addEventListener("keydown", e => {
     if (current !== "study" || e.target.tagName === "INPUT") return;
-    if ((e.key === "ArrowRight" || e.key === "ArrowDown") && ST.mode === "learn"){ e.preventDefault(); go(1, null, e.key === "ArrowDown" ? "y" : "x"); }
-    else if ((e.key === "ArrowLeft" || e.key === "ArrowUp") && ST.mode === "learn"){ e.preventDefault(); go(-1, null, e.key === "ArrowUp" ? "y" : "x"); }
+    if (e.key === "ArrowDown" && ST.mode === "learn"){ e.preventDefault(); go(1); }
+    else if (e.key === "ArrowUp" && ST.mode === "learn"){ e.preventDefault(); go(-1); }
     else if (e.key === " " || e.key === "Enter"){ e.preventDefault(); flip(); }
     else if (ST.mode === "review" && ST.flipped && "1234".includes(e.key)) rate(+e.key - 1);
     else if (e.key === "Escape") exitStudy();
