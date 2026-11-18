@@ -111,6 +111,11 @@ input[type=range]{accent-color:var(--accent);width:130px}
 .prog{height:3px;background:var(--line);border-radius:3px;overflow:hidden;margin:6px 4px 0}
 .prog i{display:block;height:100%;background:var(--accent);width:0;transition:width .3s}
 
+/* 顶栏和底部按钮盖在卡片上层，卡片上下飞出时从它们下面经过 */
+#study>.sbar,#study>.prog,#ctrlLearn,#ctrlReview{position:relative;z-index:3}
+#study>.sbar{background:var(--bg);margin:-10px -14px 0;padding:10px 14px 0}
+#study>.prog{box-shadow:0 0 0 6px var(--bg)}
+#ctrlLearn,#ctrlReview{background:var(--bg);box-shadow:0 0 0 14px var(--bg)}
 .stage{flex:1;position:relative;perspective:1600px;margin:14px 0;min-height:0;touch-action:pan-y}
 .card{position:absolute;inset:0;will-change:transform;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none}
 .inner{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.3,1.25,.5,1)}
@@ -118,10 +123,6 @@ input[type=range]{accent-color:var(--accent);width:130px}
 .inner.instant{transition:none}
 .face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--card-shadow);display:flex;flex-direction:column;overflow:hidden}
 .face.b{transform:rotateY(180deg)}
-/* 上下滑动时改为沿水平轴翻转 */
-.card.ax .face.b{transform:rotateX(180deg)}
-.card.ax.flipped .inner{transform:rotateX(180deg)}
-.card.ax.dn.flipped .inner{transform:rotateX(-180deg)}
 .ftag{display:flex;justify-content:space-between;align-items:center;padding:12px 14px 0;font-family:var(--mono);font-size:.72rem;color:var(--muted);gap:8px}
 .ftag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fbody{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:12px 22px 22px;gap:16px;min-height:0;overflow-y:auto}
@@ -244,7 +245,7 @@ input[type=range]{accent-color:var(--accent);width:130px}
       </div>
     </div>
     <div class="done" id="done" hidden></div>
-    <div class="hint" id="hint" hidden>上下滑动翻转 · 左右滑动切换</div>
+    <div class="hint" id="hint" hidden>点击翻转 · 上滑下一张 · 下滑上一张</div>
   </div>
 
   <div class="ctrls" id="ctrlLearn">
@@ -484,8 +485,8 @@ function enterStudy(){
   $("#done").hidden = true; card.hidden = false;
   render(true);
   enterAnim();
-  S.hints = (S.hints || 0) + 1;
-  $("#hint").hidden = S.hints > 6;
+  S.hints2 = (S.hints2 || 0) + 1;
+  $("#hint").hidden = S.hints2 > 6;
 }
 function exitStudy(){
   if (hasNative && Android.stop) Android.stop(); else if (window.speechSynthesis) speechSynthesis.cancel();
@@ -519,7 +520,7 @@ function render(first){
   $("#faceA").innerHTML = esFirst ? esFace(c) : enFace(c, false);
   $("#faceB").innerHTML = esFirst ? enFace(c, true) : esFace(c);
   // 换卡时立刻回到正面（不播放翻转动画）
-  inner.classList.add("instant"); card.classList.remove("flipped", "ax", "dn"); ST.flipped = false;
+  inner.classList.add("instant"); card.classList.remove("flipped"); ST.flipped = false;
   void inner.offsetWidth; inner.classList.remove("instant");
   // 顶栏
   $("#stTitle").textContent = ST.title;
@@ -544,13 +545,8 @@ function render(first){
 }
 function autoSay(c){ speak(S.settings.ex && c.ex ? c.es + ". " + c.ex : c.es); }
 
-function flip(axis, down){
+function flip(){
   if (ST.busy) return;
-  // 正面朝上时才换翻转轴；翻回去沿原来的轴，保证动画连贯
-  if (!ST.flipped){
-    card.classList.toggle("ax", axis === "x");
-    card.classList.toggle("dn", !!down);
-  }
   $("#hint").hidden = true;
   ST.flipped = !ST.flipped;
   card.classList.toggle("flipped", ST.flipped);
@@ -561,31 +557,35 @@ function flip(axis, down){
 }
 
 /* 切换动画：当前卡向一侧飞出，新卡从另一侧滑入 */
-function go(dir){
+/* axis "y"：上滑下一张（当前卡向上飞出，新卡从下方滑入），下滑上一张；"x"：左右方向 */
+function go(dir, from, axis = "y"){
   if (ST.busy) return;
   const np = ST.pos + dir;
-  if (np < 0) return;
-  if (np >= ST.list.length){ finish(dir); return; }
-  slide(dir, () => { ST.pos = np; render(); });
+  if (np < 0){ if (from) card.animate([{transform: from}, {transform: "none"}], {duration: 220}); return; }
+  if (np >= ST.list.length){ finish(dir, from, axis); return; }
+  slide(dir, () => { ST.pos = np; render(); }, from, axis);
 }
-function slide(dir, swap, from){
+function slide(dir, swap, from, axis = "y"){
   ST.busy = true;
+  const T = axis === "y"
+    ? [`translateY(${-dir * 110}%) scale(.96)`, `translateY(${dir * 70}%) scale(.94)`]
+    : [`translateX(${-dir * 115}%) rotate(${-dir * 10}deg)`, `translateX(${dir * 60}%) scale(.92)`];
   const out = card.animate([
-    {transform: from || "translateX(0) rotate(0)", opacity: 1},
-    {transform: `translateX(${-dir * 115}%) rotate(${-dir * 10}deg)`, opacity: 0}
+    {transform: from || "none", opacity: 1},
+    {transform: T[0], opacity: 0}
   ], {duration: 230, easing: "cubic-bezier(.4,0,1,1)"});
   out.onfinish = () => {
     swap();
     card.animate([
-      {transform: `translateX(${dir * 60}%) scale(.92)`, opacity: 0},
-      {transform: "translateX(0) scale(1)", opacity: 1}
-    ], {duration: 300, easing: "cubic-bezier(.2,.9,.3,1.15)"}).onfinish = () => { ST.busy = false; };
+      {transform: T[1], opacity: 0},
+      {transform: "none", opacity: 1}
+    ], {duration: 300, easing: "cubic-bezier(.2,.9,.3,1.12)"}).onfinish = () => { ST.busy = false; };
   };
 }
 function enterAnim(){
   card.animate([{transform:"translateY(30px) scale(.95)", opacity:0}, {transform:"none", opacity:1}], {duration:320, easing:"cubic-bezier(.2,.9,.3,1.1)"});
 }
-function finish(dir){
+function finish(dir, from, axis){
   if (ST.mode === "learn"){ S.last = null; save(); }
   slide(dir || 1, () => {
     card.hidden = true;
@@ -603,7 +603,7 @@ function finish(dir){
     }
     $("#dHome").onclick = () => show("home");
     $("#stCount").textContent = "完成"; $("#stProg").style.width = "100%";
-  });
+  }, from, axis);
 }
 function nextGroup(){
   const r = ST.ref; if (!r) return null;
@@ -640,7 +640,8 @@ function rate(q){
 
 /* ---------- 手势：点击翻转，左右滑动切换 ---------- */
 (function gestures(){
-  // mode: "" 未定 / "h" 左右拖动（切换）/ "v" 上下拖动（翻转）
+  // 点击 → 翻转；上滑 → 下一张，下滑 → 上一张（左右滑动同样可以切换）
+  // mode: "" 未定 / "v" 上下拖动 / "h" 左右拖动
   let sx = 0, sy = 0, dx = 0, dy = 0, mode = "", down = false, t0 = 0;
   card.addEventListener("pointerdown", e => {
     if (e.target.closest("button") || ST.busy) return;
@@ -649,30 +650,26 @@ function rate(q){
   card.addEventListener("pointermove", e => {
     if (!down || ST.busy) return;
     dx = e.clientX - sx; dy = e.clientY - sy;
-    if (!mode){
-      if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2 && ST.mode === "learn") mode = "h";
-      else if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.2) mode = "v";
+    if (!mode && ST.mode === "learn"){
+      if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx) * 1.2) mode = "v";
+      else if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) mode = "h";
       if (mode) card.setPointerCapture(e.pointerId);
     }
-    if (mode === "h") card.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
     if (mode === "v"){
-      const k = Math.max(-1, Math.min(1, dy / 160));
-      card.style.transform = `translateY(${dy * 0.25}px) rotateX(${-k * 22}deg)`;
+      // 第一张往下拉、最后一张往上拉时加阻尼
+      const edge = (dy > 0 && ST.pos === 0);
+      card.style.transform = `translateY(${edge ? dy * 0.3 : dy}px) scale(${1 - Math.min(Math.abs(dy), 300) / 3000})`;
     }
+    if (mode === "h") card.style.transform = `translateX(${dx}px) rotate(${dx / 22}deg)`;
   });
   const end = e => {
     if (!down) return; down = false;
     const from = card.style.transform; card.style.transform = "";
-    const fast = (Math.abs(mode === "v" ? dy : dx)) / Math.max(1, Date.now() - t0) > 0.5;
-    if (mode === "h"){
-      const dir = dx < 0 ? 1 : -1, np = ST.pos + dir;
-      if ((Math.abs(dx) > 80 || (fast && Math.abs(dx) > 30)) && np >= 0){
-        if (np >= ST.list.length) finish(dir);
-        else slide(dir, () => { ST.pos = np; render(); }, from);
-      } else card.animate([{transform: from}, {transform: "none"}], {duration: 220, easing: "cubic-bezier(.2,.9,.3,1.2)"});
-    } else if (mode === "v"){
-      card.animate([{transform: from}, {transform: "none"}], {duration: 200, easing: "ease-out"});
-      if (Math.abs(dy) > 50 || (fast && Math.abs(dy) > 25)) flip("x", dy > 0);
+    if (mode){
+      const d = mode === "v" ? dy : dx;
+      const fast = Math.abs(d) / Math.max(1, Date.now() - t0) > 0.5;
+      if (Math.abs(d) > 80 || (fast && Math.abs(d) > 30)) go(d < 0 ? 1 : -1, from, mode === "v" ? "y" : "x");
+      else card.animate([{transform: from}, {transform: "none"}], {duration: 220, easing: "cubic-bezier(.2,.9,.3,1.2)"});
     } else if (e.type === "pointerup" && Math.abs(dx) < 10 && Math.abs(dy) < 10) flip();
     mode = "";
   };
@@ -793,8 +790,8 @@ async function init(){
   $("#bkSearch").oninput = () => { bkLimit = 200; renderBook(); };
   $("#resume").onclick = () => { const L = S.last; ST.mode = "learn"; ST.done = 0; ST.list = L.list.filter(id => CARDS.has(id)); ST.pos = Math.min(L.pos, ST.list.length - 1); ST.title = L.title; ST.ref = L.ref; ST.total = ST.list.length; enterStudy(); };
   $("#sBack").onclick = exitStudy;
-  $("#bPrev").onclick = () => go(-1);
-  $("#bNext").onclick = () => go(1);
+  $("#bPrev").onclick = () => go(-1, null, "x");
+  $("#bNext").onclick = () => go(1, null, "x");
   $("#bFlip").onclick = () => flip();
   $("#bShow").onclick = () => flip();
   $("#bSpeak").onclick = () => speak(curCard().es);
@@ -814,10 +811,9 @@ async function init(){
 
   document.addEventListener("keydown", e => {
     if (current !== "study" || e.target.tagName === "INPUT") return;
-    if (e.key === "ArrowRight" && ST.mode === "learn") go(1);
-    else if (e.key === "ArrowLeft" && ST.mode === "learn") go(-1);
+    if ((e.key === "ArrowRight" || e.key === "ArrowDown") && ST.mode === "learn"){ e.preventDefault(); go(1, null, e.key === "ArrowDown" ? "y" : "x"); }
+    else if ((e.key === "ArrowLeft" || e.key === "ArrowUp") && ST.mode === "learn"){ e.preventDefault(); go(-1, null, e.key === "ArrowUp" ? "y" : "x"); }
     else if (e.key === " " || e.key === "Enter"){ e.preventDefault(); flip(); }
-    else if (e.key === "ArrowUp" || e.key === "ArrowDown"){ e.preventDefault(); flip("x", e.key === "ArrowDown"); }
     else if (ST.mode === "review" && ST.flipped && "1234".includes(e.key)) rate(+e.key - 1);
     else if (e.key === "Escape") exitStudy();
   });
